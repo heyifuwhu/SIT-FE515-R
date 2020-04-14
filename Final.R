@@ -1,0 +1,119 @@
+# I pledge my honor that I have abided by the Stevens Honor System.
+# Part 1
+# ===== #
+# 1
+
+bond <- function(y){
+  value <- 5 * exp(-0.5*y) + 5 * exp(-1*y) + 
+    5 * exp(-1.5 * y) + 105 * exp(-2*y) - 109.28
+  return(value)
+}
+
+dbond <- function(y){
+  value <- -2.5 * exp(-0.5*y) + -5 * exp(-1*y) + 
+    -7.5 * exp(-1.5 * y) + -210 * exp(-2*y)
+  return(value)
+}
+
+y0 = 0.02
+while(1){
+  y1 <- y0-bond(y0) / dbond(y0)
+  if(abs(y0-y1)<1e-5)
+  {
+    print("The interest rate is")
+    cat("r = ", y1, sep = "")
+    break
+  }
+  y0 <- y1
+}
+
+# We can roughly take r = 0.05
+
+# ===== #
+# 2
+
+library(quantmod)
+AAPL.traning <- getSymbols("AAPL", from = "2015-11-26", to = "2017-11-26", auto.assign = F)
+AAPL <- data.frame(AAPL.traning)
+aapl.rtn <- diff(log(AAPL$AAPL.Adjusted))
+realized.var <- sum(aapl.rtn^2)/length(aapl.rtn)
+realized.vol <- sqrt(realized.var) * sqrt(252)
+realized.vol
+
+
+# Part 2
+AAPL.traning <- data.frame(AAPL.traning)
+St <- AAPL.traning$AAPL.Close[length(AAPL.traning$AAPL.Close)]
+AAPL.testing <- getSymbols("AAPL", from = "2017-11-26", to = "2018-11-26", auto.assign = F)
+AAPL.testing <- data.frame(AAPL.testing)
+
+Maturity <- 1
+steps <- length(AAPL.testing$AAPL.Close)
+S0 <- St
+path <- 5000
+r <- 0.05
+sigma <- realized.vol
+
+
+result1 <- replicate(steps,0)
+ST1 <- NULL
+set.seed(10443234)
+for (i in 1:path){
+  dt <- Maturity / steps
+  epsilon.t.vec <- rnorm(steps)
+  dwt.vec <- epsilon.t.vec * sqrt(dt)
+  St.vec <- c()
+  St.vec[1] <- S0
+  for(i in 1:steps){
+    St.vec[i+1] <- St.vec[i] + r * St.vec[i] * dt + sigma * St.vec[i] * dwt.vec[i]
+    result1[i] <- result1[i] + St.vec[i]
+  }
+  ST1 <- c(ST1, St.vec[steps])
+}
+result1 <- result1 / path
+
+
+result2 <- replicate(steps,0)
+ST2 <- NULL
+set.seed(10443234)
+for (i in 1:path){
+  dt <- Maturity / steps
+  epsilon.t.vec <- rnorm(steps)
+  dwt.vec <- epsilon.t.vec * sqrt(dt)
+  St.vec <- c()
+  St.vec[1] <- S0
+  for(i in 1:steps){
+    St.vec[i+1] <- St.vec[i] + (0.5 + r * St.vec[i]) * dt + sigma * (St.vec[i] ** 0.9) * dwt.vec[i]
+    result2[i] <- result2[i] + St.vec[i]
+  }
+  ST2 <- c(ST2, St.vec[steps])
+}
+result2 <- result2 / path
+
+testing <- AAPL.testing$AAPL.Close
+library(Metrics)
+rmse(testing, result1)
+rmse(testing, result2)
+
+# Model2 has less rmse, which is more accurate
+# Using ST2 as sample data
+
+price0 <- testing[length(testing)]
+count <- 0
+for(i in ST2){
+  if(i > price0) count <- count + 1
+}
+count / length(ST2)
+
+library(ggplot2)
+timeline <-  seq(from=as.POSIXct("2017-11-26"), 
+                 to=as.POSIXct("2018-11-26"),
+                 by=60*60*24*366/251)
+
+price <- result2
+priceline <- testing
+table1 <- data.frame(timeline, price)
+table2 <- data.frame(timeline, priceline)
+p <- ggplot() + geom_line(data = table1, aes(x = timeline, y = price, col = "Stimulated price"))
+p + geom_line(data = table2, aes(x = timeline, y = priceline, col = "Real price"))
+
